@@ -1,0 +1,13 @@
+[Unit]
+Description=SSH Tunnel for RE/MAX Manticore
+After=network.target
+
+[Service]
+User=mother
+ExecStart=/usr/local/bin/open-manticore-tunnels
+Restart=always
+RestartSec=10
+Environment=AUTOSSH_LOGFILE=/var/log/autossh.log
+
+[Install]
+WantedBy=multi-user.target

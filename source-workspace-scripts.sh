@@ -1,7 +1,11 @@
 #!/bin/bash
 
 # Directory containing the shell scripts
-SCRIPTS_DIR="$(dirname "$(realpath "${BASH_SOURCE[0]}")")/workspace.d"
+WORKSPACE_DIR="$(dirname "$(realpath "${BASH_SOURCE[0]}")")/workspace.d"
+SCRIPTS_DIR="$(dirname "$(realpath "${BASH_SOURCE[0]}")")/scripts.d"
+
+# Exports the SCRIPTS_DIR variable to be used in the workspace.d aliases
+export SCRIPTS_DIR=${SCRIPTS_DIR}
 
 # Temporary file to store the list of sourced scripts
 SOURCED_LIST_FILE="/tmp/sourced_scripts.txt"
@@ -10,19 +14,19 @@ SOURCED_LIST_FILE="/tmp/sourced_scripts.txt"
 > "$SOURCED_LIST_FILE"
 
 # Check if the directory exists
-if [[ ! -d "$SCRIPTS_DIR" ]]; then
-  echo "Directory '$SCRIPTS_DIR' does not exist. Returning."
+if [[ ! -d "$WORKSPACE_DIR" ]]; then
+  echo "Directory '$WORKSPACE_DIR' does not exist. Returning."
   return 1
 fi
 
 # Get the list of .sh files and count them
-scripts=("$SCRIPTS_DIR"/*.sh)
+scripts=("$WORKSPACE_DIR"/*.sh)
 total_scripts=${#scripts[@]}
 sourced_count=0
 
 # Check if there are any scripts to source
 if [[ $total_scripts -eq 0 ]]; then
-  echo "No .sh files found in '$SCRIPTS_DIR'. Returning."
+  echo "No .sh files found in '$WORKSPACE_DIR'. Returning."
   return 0
 fi
 
