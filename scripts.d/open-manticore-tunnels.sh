@@ -13,6 +13,15 @@ if ! grep -q "Host $SSH_HOST" "$SSH_CONFIG_FILE"; then
     exit 1
 fi
 
+echo "Adding your current IP to the right Security Groups on AWS."
+# Get the directory of the current script
+bash "$(dirname "$(realpath "$0")")/remax-sgs.sh"
+# Check if the previous command was successful
+if [ $? -ne 0 ]; then
+    echo "Error: Failed to run remax-sgs.sh."
+    exit 1
+fi
+
 # Command to create the SSH tunnel
 echo "Setting up the HTTP port to the RE/MAX Manticore API Layer on port $LOCAL_PORT"
 # SSH command to create the tunnel
