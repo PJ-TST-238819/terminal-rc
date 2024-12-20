@@ -15,10 +15,10 @@ fi
 
 echo "Adding your current IP to the right Security Groups on AWS."
 # Get the directory of the current script
-bash "$(dirname "$(realpath "$0")")/remax-sgs.sh"
+bash "$(dirname "$(realpath "$0")")/open-sgs.sh"
 # Check if the previous command was successful
 if [ $? -ne 0 ]; then
-    echo "Error: Failed to run remax-sgs.sh."
+    echo "Error: Failed to run open-sgs.sh."
     exit 1
 fi
 

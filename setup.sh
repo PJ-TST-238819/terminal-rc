@@ -29,6 +29,8 @@ if ! grep -Fxq "source $SOURCE_SCRIPT" "$RC_FILE"; then
   echo "# Workspace environment" >> "$RC_FILE"
   echo "source $SOURCE_SCRIPT" >> "$RC_FILE"
   echo "Source command added successfully to $RC_FILE."
+  echo "Re-sourcing RC file"
+  source $RC_FILE
 else
   echo "Source command is already present in $RC_FILE. Exiting..."
   exit 0
@@ -40,6 +42,3 @@ if alias workspace-details &>/dev/null; then
 else
   echo "Setup completed, but the 'workspace-details' alias could not be set. Check the source script for issues."
 fi
-
-echo "Re-sourcing RC file"
-source $RC_FILE
