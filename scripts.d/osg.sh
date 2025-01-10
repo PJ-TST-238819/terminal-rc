@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# This is a script to be turned into an alias for adding your current IP to the security groups
+# on AWS so that you can access the resources.
+
 # Retrieve the latest public IP address
 PUBLIC_IP=$(curl -s ipconfig.io)
 if [ -z "$PUBLIC_IP" ]; then

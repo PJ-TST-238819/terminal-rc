@@ -1,5 +1,8 @@
 #!/bin/bash
 
+echo "This script is still WIP"
+exit 1
+
 # Get the directory of the current script
 SCRIPT_DIR=$(dirname "$(realpath "$0")")
 
