@@ -4,7 +4,7 @@
 # on AWS so that you can access the resources.
 
 # Retrieve the latest public IP address
-PUBLIC_IP=$(curl -s ipconfig.io)
+PUBLIC_IP=$(curl -s http://checkip.amazonaws.com)
 if [ -z "$PUBLIC_IP" ]; then
   echo "Failed to retrieve public IP address."
   exit 1
