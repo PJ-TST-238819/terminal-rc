@@ -16,6 +16,7 @@ import os
 import re
 import logging
 import sys
+import argparse
 from pathlib import Path
 from datetime import datetime
 import requests
@@ -74,6 +75,7 @@ class SSHConfigManager:
     
     def run_aws_command(self, command):
         """Run an AWS CLI command and return the result."""
+        self.logger.info(f"Executing AWS command: {command}")
         try:
             result = subprocess.run(
                 command, 
@@ -83,10 +85,13 @@ class SSHConfigManager:
                 timeout=30
             )
             if result.returncode != 0:
+                self.logger.error(f"AWS command failed with code {result.returncode}: {result.stderr}")
                 console.print(f"[red]AWS command failed: {result.stderr}[/red]")
                 return None
+            self.logger.info(f"AWS command succeeded, output length: {len(result.stdout)} chars")
             return result.stdout
         except Exception as e:
+            self.logger.error(f"Error running AWS command: {e}")
             console.print(f"[red]Error running AWS command: {e}[/red]")
             return None
     
@@ -96,7 +101,7 @@ class SSHConfigManager:
         
         command = (
             "aws ec2 describe-instances "
-            "--query 'Reservations[*].Instances[*].[InstanceId,PublicIpAddress,State.Name,Tags[?Key==\`Name\`].Value|[0]]' "
+            "--query 'Reservations[*].Instances[*].[InstanceId,PublicIpAddress,State.Name,Tags[?Key==`Name`].Value|[0]]' "
             "--output json"
         )
         
@@ -203,9 +208,11 @@ class SSHConfigManager:
                 if stripped.startswith('Host '):
                     current_host = stripped.replace('Host ', '').strip()
                     in_host_block = (current_host == host)
-                elif in_host_block and stripped.startswith('HostName '):
-                    # Update the HostName line
-                    lines[i] = f"    HostName {new_ip}\n"
+                elif in_host_block and (stripped.lower().startswith('hostname ')):
+                    # Update the HostName/Hostname line (preserve original case)
+                    indent = line[:len(line) - len(line.lstrip())]
+                    original_case = 'HostName' if stripped.startswith('HostName') else 'Hostname'
+                    lines[i] = f"{indent}{original_case} {new_ip}\n"
                     updated = True
                     in_host_block = False
                 elif stripped.startswith('Host ') and in_host_block:
@@ -226,27 +233,40 @@ class SSHConfigManager:
             console.print(f"[red]Failed to update SSH config: {e}[/red]")
             return False
     
-    def update_security_groups(self, ip_address=None):
+    def update_security_groups(self, ip_address=None, headless=False, force=False):
         """Update AWS security groups with the current IP."""
+        self.logger.info(f"Starting security group update - headless={headless}, force={force}")
+        
         if not ip_address:
             ip_address = self.get_public_ip()
             if not ip_address:
                 return False
+        
+        self.logger.info(f"Updating security groups with IP: {ip_address}")
         
         console.print(f"[yellow]This will update the following security group rules:[/yellow]")
         for rule_id in self.security_group_rules:
             console.print(f"  - {rule_id}")
         console.print(f"[yellow]With IP: {ip_address}/32[/yellow]")
         
-        # Safety confirmation
-        confirm = inquirer.confirm(
-            "Are you sure you want to update these security group rules?",
-            default=False
-        )
-        
-        if not confirm:
-            console.print("[yellow]Security group update cancelled.[/yellow]")
-            return False
+        # Safety confirmation (skip in headless mode with force)
+        if not headless or not force:
+            if headless:
+                console.print("[red]ERROR: Security group update requires --force flag in headless mode[/red]")
+                return False
+            
+            confirm = inquirer.confirm(
+                "Are you sure you want to update these security group rules?",
+                default=False
+            )
+            
+            if not confirm:
+                console.print("[yellow]Security group update cancelled.[/yellow]")
+                self.logger.info("Security group update cancelled by user")
+                return False
+        else:
+            console.print("[blue]Running in headless mode with force flag - skipping confirmation[/blue]")
+            self.logger.info("Headless mode with force - skipping user confirmation")
         
         console.print(f"[blue]Updating security groups with IP: {ip_address}[/blue]")
         
@@ -314,13 +334,180 @@ def welcome_message():
     console.print(Panel(welcome_text, expand=False, border_style="blue"))
     console.print("\nManage SSH configurations, EC2 instances, and security groups.\n")
 
-def main():
-    """Main CLI function."""
-    # Initialize logging
-    logger = setup_logging()
-    logger.info("Starting SSH Config Management CLI")
+def parse_arguments():
+    """Parse command-line arguments."""
+    parser = argparse.ArgumentParser(
+        description="SSH Config Management CLI Tool",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""Examples:
+  # Interactive mode (default)
+  python main.py
+  
+  # List EC2 instances
+  python main.py --list-instances
+  
+  # Update security groups (requires --force in headless mode)
+  python main.py --update-security-groups --force
+  
+  # Update SSH config with specific instance and host
+  python main.py --update-ssh-config --instance-id i-1234567890abcdef0 --ssh-host myserver
+  
+  # Create SSH tunnel
+  python main.py --create-tunnel --ssh-host myserver --local-port 8080 --remote-port 80
+  
+  # Show SSH hosts
+  python main.py --show-ssh-hosts
+  
+  # Run with custom IP address
+  python main.py --update-security-groups --ip-address 192.168.1.100 --force
+"""
+    )
     
-    ssh_manager = SSHConfigManager()
+    # Action flags (mutually exclusive)
+    action_group = parser.add_mutually_exclusive_group()
+    action_group.add_argument('--list-instances', action='store_true',
+                             help='List all EC2 instances')
+    action_group.add_argument('--update-ssh-config', action='store_true',
+                             help='Update SSH config with EC2 instance IP')
+    action_group.add_argument('--update-security-groups', action='store_true',
+                             help='Update security groups with current IP')
+    action_group.add_argument('--create-tunnel', action='store_true',
+                             help='Create SSH tunnel')
+    action_group.add_argument('--show-ssh-hosts', action='store_true',
+                             help='Show all SSH hosts from config')
+    
+    # Configuration options
+    parser.add_argument('--instance-id', type=str,
+                       help='EC2 instance ID (for --update-ssh-config)')
+    parser.add_argument('--ssh-host', type=str,
+                       help='SSH host name from config')
+    parser.add_argument('--ip-address', type=str,
+                       help='Custom IP address (default: auto-detect current public IP)')
+    parser.add_argument('--local-port', type=int, default=24180,
+                       help='Local port for SSH tunnel (default: 24180)')
+    parser.add_argument('--remote-port', type=int, default=80,
+                       help='Remote port for SSH tunnel (default: 80)')
+    
+    # Safety and behavior flags
+    parser.add_argument('--force', action='store_true',
+                       help='Skip confirmation prompts (required for headless security group updates)')
+    parser.add_argument('--quiet', action='store_true',
+                       help='Suppress non-essential output')
+    parser.add_argument('--json-output', action='store_true',
+                       help='Output results in JSON format')
+    
+    return parser.parse_args()
+
+def run_headless_mode(args, ssh_manager, logger):
+    """Run the CLI in headless mode based on arguments."""
+    logger.info(f"Running in headless mode with args: {vars(args)}")
+    
+    try:
+        if args.list_instances:
+            instances = ssh_manager.list_ec2_instances()
+            if args.json_output:
+                print(json.dumps(instances, indent=2))
+            else:
+                ssh_manager.display_instances_table(instances)
+            return 0
+            
+        elif args.update_ssh_config:
+            if not args.instance_id or not args.ssh_host:
+                console.print("[red]ERROR: --update-ssh-config requires --instance-id and --ssh-host[/red]")
+                return 1
+            
+            # Get instance details
+            instances = ssh_manager.list_ec2_instances()
+            selected_instance = None
+            for inst in instances:
+                if inst['id'] == args.instance_id:
+                    selected_instance = inst
+                    break
+            
+            if not selected_instance:
+                console.print(f"[red]ERROR: Instance {args.instance_id} not found[/red]")
+                return 1
+            
+            if selected_instance['state'] != 'running':
+                console.print(f"[red]ERROR: Instance {args.instance_id} is not running (state: {selected_instance['state']})[/red]")
+                return 1
+            
+            if selected_instance['public_ip'] == 'N/A':
+                console.print(f"[red]ERROR: Instance {args.instance_id} has no public IP[/red]")
+                return 1
+            
+            # Check if SSH host exists
+            ssh_hosts = ssh_manager.get_ssh_hosts()
+            if args.ssh_host not in ssh_hosts:
+                console.print(f"[red]ERROR: SSH host '{args.ssh_host}' not found in config[/red]")
+                console.print(f"Available hosts: {', '.join(ssh_hosts)}")
+                return 1
+            
+            # Update SSH config
+            success = ssh_manager.update_ssh_host(args.ssh_host, selected_instance['public_ip'])
+            return 0 if success else 1
+            
+        elif args.update_security_groups:
+            success = ssh_manager.update_security_groups(
+                ip_address=args.ip_address,
+                headless=True,
+                force=args.force
+            )
+            return 0 if success else 1
+            
+        elif args.create_tunnel:
+            if not args.ssh_host:
+                console.print("[red]ERROR: --create-tunnel requires --ssh-host[/red]")
+                return 1
+            
+            # Check if SSH host exists
+            ssh_hosts = ssh_manager.get_ssh_hosts()
+            if args.ssh_host not in ssh_hosts:
+                console.print(f"[red]ERROR: SSH host '{args.ssh_host}' not found in config[/red]")
+                console.print(f"Available hosts: {', '.join(ssh_hosts)}")
+                return 1
+            
+            # Update security groups first if force flag is provided
+            if args.force:
+                console.print("[blue]Updating security groups first...[/blue]")
+                ssh_manager.update_security_groups(headless=True, force=True)
+            
+            # Create tunnel
+            success = ssh_manager.create_ssh_tunnel(
+                args.ssh_host,
+                args.local_port,
+                args.remote_port
+            )
+            return 0 if success else 1
+            
+        elif args.show_ssh_hosts:
+            hosts = ssh_manager.get_ssh_hosts()
+            if args.json_output:
+                print(json.dumps(hosts, indent=2))
+            elif hosts:
+                if not args.quiet:
+                    table = Table(title="SSH Hosts")
+                    table.add_column("Host Name", style="cyan")
+                    for host in hosts:
+                        table.add_row(host)
+                    console.print(table)
+                else:
+                    for host in hosts:
+                        print(host)
+            else:
+                console.print("[yellow]No SSH hosts found[/yellow]")
+            return 0
+        
+    except Exception as e:
+        logger.error(f"Headless mode error: {e}")
+        console.print(f"[red]Error: {e}[/red]")
+        return 1
+    
+    return 0
+
+def run_interactive_mode(ssh_manager, logger):
+    """Run the CLI in interactive mode."""
+    logger.info("Running in interactive mode")
     
     try:
         welcome_message()
@@ -347,6 +534,7 @@ def main():
                 break
             
             action = answers['action']
+            logger.info(f"User selected action: {action}")
             
             if action == 'List EC2 Instances':
                 instances = ssh_manager.list_ec2_instances()
@@ -380,6 +568,7 @@ def main():
                 selected = instance_answer['instance']
                 instance_id = selected.split(' ')[0]
                 selected_instance = next(inst for inst in running_instances if inst['id'] == instance_id)
+                logger.info(f"User selected instance: {instance_id}")
                 
                 # Get SSH hosts
                 ssh_hosts = ssh_manager.get_ssh_hosts()
@@ -397,6 +586,8 @@ def main():
                 host_answer = inquirer.prompt([host_q])
                 if not host_answer:
                     continue
+                
+                logger.info(f"User selected SSH host: {host_answer['ssh_host']}")
                 
                 # Update the SSH config
                 ssh_manager.update_ssh_host(host_answer['ssh_host'], selected_instance['public_ip'])
@@ -428,6 +619,8 @@ def main():
                 if not tunnel_answers:
                     continue
                 
+                logger.info(f"Creating tunnel: {tunnel_answers['ssh_host']}:{tunnel_answers['local_port']}->{tunnel_answers['remote_port']}")
+                
                 # First update security groups
                 console.print("[blue]Updating security groups first...[/blue]")
                 ssh_manager.update_security_groups()
@@ -453,11 +646,43 @@ def main():
             console.print()  # Add spacing
         
         console.print("[bold cyan]Thank you for using the SSH Config Management Tool![/bold cyan]")
+        return 0
         
     except KeyboardInterrupt:
         console.print("\n\n[red]Operation cancelled by user.[/red]")
+        logger.info("Interactive mode cancelled by user")
+        return 1
     except Exception as e:
+        logger.error(f"Interactive mode error: {e}")
         console.print(f"\n[red]An error occurred: {e}[/red]")
+        return 1
+
+def main():
+    """Main CLI function with argument parsing and mode selection."""
+    # Parse command-line arguments
+    args = parse_arguments()
+    
+    # Initialize logging
+    logger = setup_logging()
+    logger.info("Starting SSH Config Management CLI")
+    logger.info(f"Command-line arguments: {vars(args)}")
+    
+    # Initialize SSH manager
+    ssh_manager = SSHConfigManager()
+    
+    # Determine if running in headless mode
+    headless_mode = any([
+        args.list_instances,
+        args.update_ssh_config,
+        args.update_security_groups,
+        args.create_tunnel,
+        args.show_ssh_hosts
+    ])
+    
+    if headless_mode:
+        return run_headless_mode(args, ssh_manager, logger)
+    else:
+        return run_interactive_mode(ssh_manager, logger)
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

@@ -99,12 +99,41 @@ self.security_group_rules = [
 ## 🎯 Usage Guide
 
 ### Running the Application
+
+#### Using the Shell Script (Recommended)
+```bash
+# Interactive mode
+./ssh-cli
+
+# With debug logging to console
+./ssh-cli --debug
+
+# Headless mode examples
+./ssh-cli --list-instances
+./ssh-cli --update-security-groups --force
+./ssh-cli --show-ssh-hosts --json-output
+```
+
+#### Direct Python Execution
 ```bash
 # Standard run
 devbox run run "python src/cli_d/main.py"
 
 # With debug logging to console
 SSH_CLI_DEBUG=1 devbox run run "python src/cli_d/main.py"
+```
+
+#### User Installation (Recommended)
+```bash
+# Install to ~/.local/bin for user access
+./install.sh
+
+# Now you can run from anywhere (if ~/.local/bin is in PATH)
+ssh-cli --help
+ssh-cli --list-instances
+
+# Uninstall when no longer needed
+./install.sh --uninstall
 ```
 
 ### Main Menu Options
@@ -259,8 +288,58 @@ cli.d/
 │   └── main.py                  # Main application logic
 ├── devbox.json                  # Devbox configuration
 ├── pyproject.toml               # Python package configuration
+├── ssh-cli                      # Executable shell script launcher
+├── install.sh                   # System-wide installation script
 ├── README.md                    # This documentation
 └── .venv/                       # Virtual environment (auto-created)
+```
+
+### Shell Scripts
+
+#### `ssh-cli` - Main Launcher Script
+A convenient executable wrapper that:
+- Handles devbox environment setup automatically
+- Provides colored output and status messages
+- Supports all CLI flags and options
+- Includes built-in help and version information
+- Enables debug mode with `--debug` flag
+
+**Features**:
+- Auto-detects if running in devbox environment
+- Automatically enters devbox if needed
+- Passes all arguments to the Python CLI
+- Provides clear error messages and status updates
+
+#### `install.sh` - User Installation Script
+Automated installation script that:
+- Sets up the project in the current directory
+- Creates user bin directory symlinks for easy access
+- Supports custom installation directories  
+- Provides uninstallation capability
+- Validates prerequisites and manages dependencies
+- Tests installation after completion
+- Helps configure PATH if needed
+
+**Features**:
+- Installs to `~/.local/bin` by default (user-specific)
+- Automatically sets up devbox environment and dependencies
+- Provides PATH configuration guidance
+- No sudo required for default installation
+- Creates symlinks pointing to the current directory
+
+**Usage Examples**:
+```bash
+# Install to ~/.local/bin (default)
+./install.sh
+
+# Install to custom directory
+./install.sh --install-dir ~/bin
+
+# Install with custom command name
+./install.sh --name my-ssh-tool
+
+# Uninstall
+./install.sh --uninstall
 ```
 
 ### Development Commands
