@@ -1,0 +1,47 @@
+{
+  "$schema":  "https://raw.githubusercontent.com/jetify-com/devbox/0.14.2/.schema/devbox.schema.json",
+  "packages": ["python@3.11", "uv@latest"],
+  "shell": {
+    "init_hook": [
+      "echo 'Setting up Python CLI development environment with UV...'",
+      "# Initialize UV project if pyproject.toml doesn't exist",
+      "if [ ! -f pyproject.toml ]; then",
+      "  echo 'Initializing UV project...'",
+      "  uv init --python 3.11",
+      "fi",
+      "# Create virtual environment if it doesn't exist",
+      "if [ ! -d .venv ]; then",
+      "  echo 'Creating virtual environment...'",
+      "  uv venv --python 3.11",
+      "fi",
+      "# Activate virtual environment",
+      "source .venv/bin/activate",
+      "echo 'Python CLI development environment ready!'",
+      "echo 'Python version:' $(python --version)",
+      "echo 'UV version:' $(uv --version)"
+    ],
+    "scripts": {
+      "install": [
+        "uv sync"
+      ],
+      "add": [
+        "uv add $1"
+      ],
+      "run": [
+        "uv run $@"
+      ],
+      "test": [
+        "uv run pytest"
+      ],
+      "lint": [
+        "uv run ruff check ."
+      ],
+      "format": [
+        "uv run ruff format ."
+      ],
+      "build": [
+        "uv build"
+      ]
+    }
+  }
+}
